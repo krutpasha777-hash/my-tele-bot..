@@ -10,7 +10,11 @@ app = Flask(__name__)
 @app.route('/')
 def hello(): return 'Bot is Live!'
 
-threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080))), daemon=True).start()
+def run_flask():
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
+
+threading.Thread(target=run_flask, daemon=True).start()
 
 # --- BOT SETUP ---
 TOKEN = "8239395932:AAGtE84FBa8OzFcUfNSAiOES9xa8jYpNWqY"
@@ -27,14 +31,14 @@ def start(message):
 def weather(message):
     bot.send_message(message.chat.id, "🌤 В Днепре сейчас облачно, около +5°C. Хорошего дня!")
 
-@bot.message_handler(func=lambda message: message.text == "Заметки")
-def notes(message):
-    bot.send_message(message.chat.id, "📒 Твой блокнот пока пуст. Я могу хранить тут важные номера деталей!")
+@bot.message_handler(func=lambda message: message.text == "Итоги")
+def summary(message):
+    bot.send_message(message.chat.id, "📊 Здесь будет храниться сумма твоих заказов за месяц!")
 
-# --- ОБРАБОТКА ФОТО (УЛУЧШЕННАЯ) ---
+# --- ОБРАБОТКА ФОТО (СПЕЦИАЛЬНО ДЛЯ ЗАПЧАСТЕЙ) ---
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
-    bot.reply_to(message, "🔍 Вижу список! Пытаюсь разобрать почерк и посчитать только цены...")
+    bot.reply_to(message, "🔍 Вижу список! Разбираю почерк, ищу только цены...")
     try:
         file_info = bot.get_file(message.photo[-1].file_id)
         file_url = f'https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}'
@@ -47,27 +51,27 @@ def handle_photo(message):
         if result.get('OCRExitCode') == 1:
             detected_text = result['ParsedResults'][0]['ParsedText']
             
-            # Умный поиск: ищем числа после знака "-" или "+"
-            # Это поможет игнорировать "Штрак 88" и считать только "20"
+            # Улучшенный поиск: ищем числа, которые стоят после "-" или "+"
+            # Это отсеет номера деталей (88, 109, 113) и возьмет только цены/кол-во
             prices = re.findall(r'[-+]\s*(\d+)', detected_text)
             
-            # Если после тире ничего не нашли, попробуем найти числа в конце строк
+            # Если после знаков ничего нет, берем числа в конце строк
             if not prices:
                 prices = re.findall(r'(\d+)(?:\s|$)', detected_text)
 
             total = sum(map(int, prices))
             
-            report = f"📝 **Что я увидел:**\n`{detected_text[:200]}...`\n\n"
-            report += f"💰 **Сумма цен (предварительно):** {total} грн"
+            report = f"📝 **Распознанный текст:**\n`{detected_text[:250]}...`\n\n"
+            report += f"💰 **Насчитал (только цены):** {total} грн"
             bot.send_message(message.chat.id, report)
         else:
-            bot.send_message(message.chat.id, "❌ Не смог разобрать текст. Попробуй сделать фото ближе.")
+            bot.send_message(message.chat.id, "❌ Не смог разобрать. Попробуй сделать фото чуть ближе и при светe.")
     except Exception as e:
-        bot.send_message(message.chat.id, "⚠️ Ошибка при обработке. Попробуй еще раз!")
+        bot.send_message(message.chat.id, f"⚠️ Ошибка: {e}")
 
-# Ответ на обычный текст (не кнопки)
+# Универсальный ответ на текст
 @bot.message_handler(func=lambda message: True)
-def other_text(message):
-    bot.reply_to(message, "Я получил сообщение, но не знаю что с ним делать. Нажми на кнопку или скинь фото!")
+def other(message):
+    bot.reply_to(message, "Нажми кнопку или пришли фото списка запчастей! ⚙️")
 
 bot.polling(none_stop=True)
