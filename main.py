@@ -37,7 +37,7 @@ def handle_photo(message):
         # Настройки для Engine 2 (лучший для рукописных цифр)
         payload = {
             'url': file_url,
-            'apikey': 'helloworld',
+            'apikey': 'K87871923388957',
             'language': 'rus',
             'OCREngine': '2',
             'scale': 'true' # Увеличивает фото для лучшего чтения
