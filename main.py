@@ -5,14 +5,14 @@ import re
 from flask import Flask
 import threading
 
-# --- СЕРВЕР ---
+# --- SERVER (ОБМАНКА ДЛЯ RENDER) ---
 app = Flask(__name__)
 @app.route('/')
 def hello(): return 'Bot is Live!'
 
 threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080))), daemon=True).start()
 
-# --- БОТ ---
+# --- BOT SETUP ---
 TOKEN = "8239395932:AAGtE84FBa8OzFcUfNSAiOES9xa8jYpNWqY"
 bot = telebot.TeleBot(TOKEN)
 
@@ -20,22 +20,21 @@ bot = telebot.TeleBot(TOKEN)
 def start(message):
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Добавить трату", "Итоги", "Заметки", "Погода")
-    bot.send_message(message.chat.id, "Бот готов! Жми кнопки или пришли фото списка запчастей.", reply_markup=markup)
+    bot.send_message(message.chat.id, "✅ Бот настроен! Пришли фото списка или нажми кнопку.", reply_markup=markup)
 
-# Обработка кнопки "Погода"
+# --- ОБРАБОТКА КНОПОК ---
 @bot.message_handler(func=lambda message: message.text == "Погода")
 def weather(message):
-    bot.reply_to(message, "🌤 В Днепре сейчас +5°C, облачно. (Это демо-режим)")
+    bot.send_message(message.chat.id, "🌤 В Днепре сейчас облачно, около +5°C. Хорошего дня!")
 
-# Обработка кнопки "Заметки"
 @bot.message_handler(func=lambda message: message.text == "Заметки")
 def notes(message):
-    bot.reply_to(message, "📝 Твои последние заметки пусты.")
+    bot.send_message(message.chat.id, "📒 Твой блокнот пока пуст. Я могу хранить тут важные номера деталей!")
 
-# --- ГЛАВНОЕ: ОБРАБОТКА ФОТО ---
+# --- ОБРАБОТКА ФОТО (УЛУЧШЕННАЯ) ---
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
-    bot.reply_to(message, "🔍 Вижу список! Читаю почерк...")
+    bot.reply_to(message, "🔍 Вижу список! Пытаюсь разобрать почерк и посчитать только цены...")
     try:
         file_info = bot.get_file(message.photo[-1].file_id)
         file_url = f'https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}'
@@ -43,25 +42,32 @@ def handle_photo(message):
         # Запрос к OCR API
         r = requests.post('https://api.ocr.space/parse/image', 
                           data={'url': file_url, 'apikey': 'helloworld', 'language': 'rus'})
-        text = r.json()['ParsedResults'][0]['ParsedText']
+        result = r.json()
         
-        # Улучшенный поиск цен: ищем числа, которые стоят после знака "-" или в конце строки
-        # Это поможет не считать "номер детали" как цену
-        prices = re.findall(r'-\s*(\d+)', text) # ищет цифры после тире
-        if not prices:
-            prices = re.findall(r'(\d+)\s*$', text, re.MULTILINE) # или в конце строки
+        if result.get('OCRExitCode') == 1:
+            detected_text = result['ParsedResults'][0]['ParsedText']
             
-        total = sum(map(int, prices))
-        
-        res = f"📋 **Распознал:**\n{text[:300]}...\n\n"
-        res += f"💰 **Итого по ценам:** {total} грн"
-        bot.send_message(message.chat.id, res)
-    except:
-        bot.send_message(message.chat.id, "❌ Ошибка чтения. Попробуй фото почетче!")
+            # Умный поиск: ищем числа после знака "-" или "+"
+            # Это поможет игнорировать "Штрак 88" и считать только "20"
+            prices = re.findall(r'[-+]\s*(\d+)', detected_text)
+            
+            # Если после тире ничего не нашли, попробуем найти числа в конце строк
+            if not prices:
+                prices = re.findall(r'(\d+)(?:\s|$)', detected_text)
 
-# Ответ на любой другой текст
+            total = sum(map(int, prices))
+            
+            report = f"📝 **Что я увидел:**\n`{detected_text[:200]}...`\n\n"
+            report += f"💰 **Сумма цен (предварительно):** {total} грн"
+            bot.send_message(message.chat.id, report)
+        else:
+            bot.send_message(message.chat.id, "❌ Не смог разобрать текст. Попробуй сделать фото ближе.")
+    except Exception as e:
+        bot.send_message(message.chat.id, "⚠️ Ошибка при обработке. Попробуй еще раз!")
+
+# Ответ на обычный текст (не кнопки)
 @bot.message_handler(func=lambda message: True)
-def other(message):
-    bot.reply_to(message, "Я тебя понял! Но лучше нажми кнопку или пришли фото.")
+def other_text(message):
+    bot.reply_to(message, "Я получил сообщение, но не знаю что с ним делать. Нажми на кнопку или скинь фото!")
 
 bot.polling(none_stop=True)
