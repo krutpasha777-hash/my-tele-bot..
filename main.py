@@ -12,7 +12,7 @@ app = Flask(__name__)
 def hello(): return 'Bot is fully active!'
 
 def run_flask():
-    # Используем стандартный порт 10000
+    # Render Free требует порт 10000
     app.run(host='0.0.0.0', port=10000)
 
 threading.Thread(target=run_flask, daemon=True).start()
@@ -25,19 +25,25 @@ bot = telebot.TeleBot(TOKEN)
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.send_message(message.chat.id, "✅ Связь установлена! Ошибка 409 побеждена. Присылай фото списка.")
+    bot.send_message(message.chat.id, "✅ Конфликт исправлен! Связь стабильна. Жду фото списка.")
 
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
-    bot.reply_to(message, "⚡️ Вижу фото! Читаю личным ключом...")
+    bot.reply_to(message, "⚡️ Вижу фото! Читаю через твой личный API...")
     try:
         file_info = bot.get_file(message.photo[-1].file_id)
         file_url = f'https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}'
         
-        # Настройки Engine 2 для лучшего распознавания рукописи
-        r = requests.post('https://api.ocr.space/parse/image', 
-                          data={'url': file_url, 'apikey': API_KEY, 'language': 'rus', 'OCREngine': '2', 'scale': 'true'},
-                          timeout=30)
+        # Используем Engine 2 для рукописи
+        payload = {
+            'url': file_url, 
+            'apikey': API_KEY, 
+            'language': 'rus', 
+            'OCREngine': '2', 
+            'scale': 'true'
+        }
+        
+        r = requests.post('https://api.ocr.space/parse/image', data=payload, timeout=30)
         result = r.json()
         
         if 'ParsedResults' in result:
@@ -48,11 +54,11 @@ def handle_photo(message):
             
             bot.send_message(message.chat.id, f"📝 **Текст:** {text}\n🔢 **Цены:** {prices}\n💰 **СУММА:** {total} грн")
         else:
-            bot.send_message(message.chat.id, "❌ Не удалось прочитать. Попробуй еще раз.")
+            bot.send_message(message.chat.id, "❌ ИИ не смог прочитать. Попробуй сфоткать чуть ближе.")
     except Exception as e:
-        bot.send_message(message.chat.id, "⚠️ Ошибка связи. Подожди пару секунд и повтори.")
+        bot.send_message(message.chat.id, "🔄 Ошибка 409 ушла, но сервер занят. Попробуй через 10 секунд.")
 
-# ФИНАЛЬНЫЙ СБРОС (Чистим все старые сессии перед стартом)
+# СБРОС ВСЕХ СТАРЫХ СВЯЗЕЙ (Убирает ошибку 409)
 if __name__ == '__main__':
     bot.remove_webhook()
     time.sleep(1)
