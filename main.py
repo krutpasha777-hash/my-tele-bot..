@@ -29,6 +29,43 @@ bot = telebot.TeleBot(TOKEN, threaded=False)
 
 # В самом конце оставь это:
 print("--- БОТ ЗАПУЩЕН НА СЕРВЕРЕ ---")
+import requests # Не забудь добавить это в начало файла к остальным import
+
+@bot.message_handler(content_types=['photo'])
+def handle_photo(message):
+    bot.reply_to(message, "📸 Вижу фото! Пытаюсь распознать текст и посчитать сумму...")
+    
+    try:
+        # Получаем ссылку на фото
+        file_info = bot.get_file(message.photo[-1].file_id)
+        file_url = f'https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}'
+        
+        # Используем бесплатный API для распознавания (OCR.space)
+        # Мы используем их публичный ключ 'helloworld' для начала
+        payload = {
+            'url': file_url,
+            'apikey': 'helloworld',
+            'language': 'rus',
+            'isOverlayRequired': False,
+            'FileType': 'JPG',
+        }
+        r = requests.post('https://api.ocr.space/parse/image', data=payload)
+        result = r.json()
+        
+        if result['OCRExitCode'] == 1:
+            detected_text = result['ParsedResults'][0]['ParsedText']
+            # Ищем все числа (цены) в тексте
+            prices = re.findall(r'\d+', detected_text)
+            total = sum(map(int, prices))
+            
+            response = f"✅ Распознанный текст:\n\n{detected_text}\n"
+            response += f"--- \n🧮 Сумма всех найденных чисел: {total}"
+            bot.reply_to(message, response)
+        else:
+            bot.reply_to(message, "❌ Не удалось прочитать текст на фото.")
+            
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Ошибка: {e}")
 while True:
     try:
         bot.polling(none_stop=True, interval=1, timeout=20)
