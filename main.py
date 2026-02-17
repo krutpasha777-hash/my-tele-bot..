@@ -1,12 +1,11 @@
 import telebot
-import os
 import requests
 import re
 from flask import Flask
 import threading
 import time
 
-# --- СЕРВЕР ДЛЯ RENDER ---
+# --- СЕРВЕР (чтобы Render не отключал бота) ---
 app = Flask(__name__)
 @app.route('/')
 def hello(): return 'Accounting System Active'
@@ -28,10 +27,6 @@ PRICES = {
 
 bot = telebot.TeleBot(TOKEN)
 
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.send_message(message.chat.id, "🏗 Привет, Паша! Я готов считать твою работу. Присылай фото списка!")
-
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     bot.reply_to(message, "🔢 Считаю по прайсу, секунду...")
@@ -39,28 +34,28 @@ def handle_photo(message):
         file_info = bot.get_file(message.photo[-1].file_id)
         file_url = f'https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}'
         
-        # OCR с твоим ключом
+        # Запрос к нейросети (OCR)
         payload = {'url': file_url, 'apikey': API_KEY, 'language': 'rus', 'OCREngine': '2', 'scale': 'true'}
         r = requests.post('https://api.ocr.space/parse/image', data=payload)
         result = r.json()
         
-        if 'ParsedResults' in result:
+        if 'ParsedResults' in result and result['ParsedResults']:
             text = result['ParsedResults'][0]['ParsedText'].lower()
             
             report = "📝 **ОТЧЕТ ПО РАБОТЕ:**\n\n"
             total_sum = 0
             found_anything = False
 
-            # Проходим по каждой позиции прайса
+            # Логика поиска: Деталь -> Модель -> Количество
             for item, price in PRICES.items():
                 if item in text:
-                    # Ищем цифру, которая идет сразу ПОСЛЕ названия детали и тире
+                    # Ищем число, которое идет ПОСЛЕ названия детали
+                    # Например: "колесо 113 - 8"
                     match = re.search(rf"{item}.*?(\d+)", text)
                     if match:
                         count = int(match.group(1))
-                        # Защита: количество не может быть номером модели (113, 88, 600)
+                        # Если число совпадает с моделью (113, 88, 600), ищем следующее число в строке
                         if count in [113, 88, 600]:
-                            # Ищем второе число в этой же строке
                             numbers = re.findall(r'\d+', text.split(item)[1])
                             if len(numbers) > 1:
                                 count = int(numbers[1])
@@ -76,12 +71,15 @@ def handle_photo(message):
                 report += f"\n📅 {time.strftime('%d.%m.%Y')}"
                 bot.send_message(message.chat.id, report)
             else:
-                bot.send_message(message.chat.id, "🔍 Текст вижу, но не узнал детали из прайса. Попробуй еще раз.")
+                bot.send_message(message.chat.id, "🔍 Не узнал детали из прайса. Проверь названия в списке!")
         else:
-            bot.send_message(message.chat.id, "❌ Не удалось прочитать.")
+            bot.send_message(message.chat.id, "❌ Не удалось прочитать фото.")
             
     except Exception as e:
-        bot.send_message(message.chat.id, "🔄 Маленький сбой. Повтори через 10 секунд.")
+        bot.send_message(message.chat.id, "🔄 Система занята. Попробуй еще раз через 15 секунд.")
 
-bot.remove_webhook()
-bot.polling(none_stop=True)
+# ФИНАЛЬНЫЙ СБРОС (лечит ошибку 409)
+if __name__ == '__main__':
+    bot.remove_webhook()
+    time.sleep(1)
+    bot.polling(none_stop=True)
